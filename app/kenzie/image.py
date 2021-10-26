@@ -1,8 +1,9 @@
 import os
-from flask.helpers import safe_join, send_file, send_from_directory
+from flask.helpers import safe_join, send_file
+from flask import jsonify, request
 from werkzeug.datastructures import FileStorage
 from werkzeug.utils import secure_filename
-from . import FILES_DIRECTORY, ALLOWED_EXTENSIONS, MAX_SIZE_FILE, filenames
+from . import FILES_DIRECTORY, ALLOWED_EXTENSIONS, MAX_SIZE_FILE
 
 
 def get_path(file: str):
@@ -15,27 +16,33 @@ def files_list():
     files = []
     for _, _, filename in os.walk(FILES_DIRECTORY):
         files.extend(filename)
-    return files
+    return jsonify(files), 200
 
 
 def files_extension_list(file_extension: str):
-    if filenames.count(file_extension) != 0:
+    filenames = []
+    for _, _, filename in os.walk(safe_join(FILES_DIRECTORY, file_extension)):
+        filenames.extend(filename)
+    print(filenames)
+    if len(filenames) != 0:
         path = safe_join(FILES_DIRECTORY, file_extension)
         files = os.listdir(path)
-        return files
+        return jsonify(files), 200
     else:
-        return {"message": "Formato inexistente no sistema."}       
+        return {"message": "Não há arquivos nesse formato."}, 404       
 
 
-def download_file(filename):
+def download_file(filename: str):
+    extension = filename.split('.')[-1]
+    path = safe_join(FILES_DIRECTORY, extension)
+    
     try:
-        path = get_path(filename)
-        return send_file(path, as_attachment=True), 200
-    except NameError:
-        return {"message": "Arquivo não encontrado"}, 404
+        return send_file(f'{path}/{filename}', as_attachment=True), 200
+    except:
+        return {"message": "Arquivo não encontrado"}, 404        
 
 
-def download_zip(extension: str, compression: int):
+def download_files_zip(extension: str, compression: int):
     path = f'{FILES_DIRECTORY}{extension}'
     list_files_of_extension = os.listdir(path)
     
@@ -46,23 +53,26 @@ def download_zip(extension: str, compression: int):
     return send_file(f'/tmp/{extension}-files-zip.zip', as_attachment=True), 200
 
 
-def save_file(file: FileStorage):
-    extension = file.filename.split('.')[-1]
-    file.save(f'/tmp/{file.filename}')
-    file_size = os.stat(f'/tmp/{file.filename}').st_size
+def save_file():
+    files = []
+    for file in request.files:
+        extension = request.files[file].filename.split('.')[-1]
+        request.files[file].save(f'/tmp/{request.files[file].filename}')
+        file_size = os.stat(f'/tmp/{request.files[file].filename}').st_size
+        request.files[file].filename = secure_filename(request.files[file].filename)
 
-    if not extension in ALLOWED_EXTENSIONS:
-        return {"message": "Formato de arquivo não suportado"}, 415
-    
-    if file_size > MAX_SIZE_FILE:
-        return {"message": "Tamanho de arquivo não passado"}, 403
-    
-    for _, _, filename in os.walk(f'{FILES_DIRECTORY}/{extension}'):
-        if file.filename == filename: 
-            return {"message": "Arquivo já existe no banco"}, 409
+        if not extension in ALLOWED_EXTENSIONS:
+            return {"message": "Formato de arquivo não suportado"}, 415
 
-    filename = secure_filename(file.filename) 
-    path = get_path(file.filename)
-    file.save(path)
+        if file_size > MAX_SIZE_FILE:
+            return {"message": "Tamanho de arquivo não suportado"}, 403
 
-    return filename
+        for filename in os.listdir(f'{FILES_DIRECTORY}/{extension}'):
+            if request.files[file].filename == filename: 
+                return {"message": "Arquivo já existe no banco"}, 409
+        
+        path = get_path(request.files[file].filename)
+        request.files[file].save(path)
+        files.append(request.files[file].filename)
+        
+    return jsonify(files), 201
