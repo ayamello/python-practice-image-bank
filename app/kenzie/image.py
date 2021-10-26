@@ -65,7 +65,7 @@ def save_file():
             return {"message": "Formato de arquivo não suportado"}, 415
 
         if file_size > MAX_SIZE_FILE:
-            return {"message": "Tamanho de arquivo não suportado"}, 403
+            return {"message": "Tamanho de arquivo não suportado"}, 413
 
         for filename in os.listdir(f'{FILES_DIRECTORY}/{extension}'):
             if request.files[file].filename == filename: 
